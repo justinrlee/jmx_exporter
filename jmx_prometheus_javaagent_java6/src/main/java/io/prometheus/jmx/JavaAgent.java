@@ -6,6 +6,12 @@ import java.net.InetSocketAddress;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.sun.net.httpserver.Authenticator;
+import com.sun.net.httpserver.BasicAuthenticator;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsParameters;
+
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.exporter.HTTPServer;
 import io.prometheus.client.hotspot.DefaultExports;
@@ -28,12 +34,27 @@ public class JavaAgent {
             new BuildInfoCollector().register();
             new JmxCollector(new File(config.file), JmxCollector.Mode.AGENT).register();
             DefaultExports.initialize();
-            server = new HTTPServer(config.socket, CollectorRegistry.defaultRegistry, true);
+            // server = new HTTPServer(config.socket, CollectorRegistry.defaultRegistry, true);
+            server = new HTTPServer.Builder()
+                                   .withInetSocketAddress(config.socket)
+                                   .withRegistry(CollectorRegistry.defaultRegistry)
+                                   .withDaemonThreads(true)
+                                   .withAuthenticator(createAuthenticator("/", "user", "secret"))
+                                   .build();
         }
         catch (IllegalArgumentException e) {
             System.err.println("Usage: -javaagent:/path/to/JavaAgent.jar=[host:]<port>:<yaml configuration file> " + e.getMessage());
             System.exit(1);
         }
+    }
+
+    private final static Authenticator createAuthenticator(String realm, final String validUsername, final String validPassword) {
+      return new BasicAuthenticator(realm) {
+        @Override
+        public boolean checkCredentials(String username, String password) {
+          return validUsername.equals(username) && validPassword.equals(password);
+        }
+      };
     }
 
     /**
